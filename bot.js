@@ -1,25 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
-const OWNER_FILE = path.join(__dirname, "owner", "owner.json");
-const PREMIUM_FILE = path.join(__dirname, "premium", "premium.json");
-
-function loadOwner() {
-    try {
-        return JSON.parse(fs.readFileSync(OWNER_FILE, "utf8"));
-    } catch {
-        return [];
-    }
-}
-
-function loadPremium() {
-    try {
-        return JSON.parse(fs.readFileSync(PREMIUM_FILE, "utf8"));
-    } catch {
-        return [];
-    }
-}
-
 const TelegramBot = require('node-telegram-bot-api');
 const config = require('./config');
 const { db, save, load } = require('./database');
@@ -61,13 +39,12 @@ let shareIntervals = {};
 // ============ FUNGSI BANTU ============
 
 function isOwner(id) {
-    const owners = loadOwner();
-    return owners.includes(id.toString());
+    return db.owners.includes(id.toString());
 }
 
 function isPremium(id) {
-    const premium = loadPremium();
-    return premium.includes(id.toString()) || isOwner(id);
+    if (!db || !db.premium) return false;
+    return db.premium.includes(id.toString());
 }
 
 function isAdmin(id) {
@@ -96,26 +73,16 @@ function makeItalic(text) {
     return `<i>${text}</i>`;
 }
 
-async function sendMenu(chatId, image, text, replyMarkup) {
-    const sent = await bot.sendPhoto(chatId, image, {
-        caption: text,
-        parse_mode: "HTML",
-        reply_markup: replyMarkup
-    });
-
-    if (db.lastMenuMessage && db.lastMenuMessage[chatId]) {
-        try {
-            await bot.deleteMessage(chatId, db.lastMenuMessage[chatId]);
-        } catch (e) {
-            console.log(e.message);
+async function sendMenuPhoto(chatId, text, replyMarkup = null) {
+    return bot.sendPhoto(
+        chatId,
+        config.MENU_IMAGE,
+        {
+            caption: text,
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup
         }
-    }
-
-    if (!db.lastMenuMessage) db.lastMenuMessage = {};
-    db.lastMenuMessage[chatId] = sent.message_id;
-    save();
-
-    return sent;
+    );
 }
 
 // ============ ANIMASI BAR ============
@@ -151,19 +118,33 @@ async function showMainMenu(chatId, userId) {
 
     const replyMarkup = {
         inline_keyboard: [
-            [{ text: '👑 Owner Menu', callback_data: 'owner_menu' }],
-            [{ text: '⭐ Premium Menu', callback_data: 'premium_menu' }]
+            [{ text: '👑 Owner Menu', callback_data: 'owner' }],
+            [{ text: '⭐ Premium Menu', callback_data: 'premium' }]
         ]
     };
 
-    await sendMenu(
+    if (db.lastMenuMessage && db.lastMenuMessage[chatId]) {
+        try {
+            await bot.editMessageText(menuText, {
+                chat_id: chatId,
+                message_id: db.lastMenuMessage[chatId],
+                parse_mode: 'HTML',
+                reply_markup: replyMarkup
+            });
+            return;
+        } catch (e) {}
+    }
+
+    const sent = await sendMenuPhoto(
     chatId,
-    config.MENU_IMAGE,
     menuText,
     replyMarkup
-    );
-    return;   
-  }
+);
+    
+    if (!db.lastMenuMessage) db.lastMenuMessage = {};
+    db.lastMenuMessage[chatId] = sent.message_id;
+    save();
+}
 
 // ============ COMMAND HANDLER - TANPA PREFIX / ============
 
@@ -1045,25 +1026,17 @@ bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
     const userId = query.from.id;
-
-    console.log("========== CALLBACK ==========");
-    console.log("User ID      :", userId);
-    console.log("Callback Data:", query.data);
-    console.log("Owner List   :", loadOwner());
-    console.log("Is Owner     :", isOwner(userId));
-    console.log("==============================");
-
+    
     bot.answerCallbackQuery(query.id);
     
-    // ============ OWNER MENU ============
-    if (query.data === 'owner_menu') {
+    if (query.data === 'owner') {
         if (!isOwner(userId)) {
             return bot.sendMessage(chatId, `${makeQuote('❌ Hanya owner!')}`, { parse_mode: 'HTML' });
         }
         
         const ownerMenuText = 
 `${makeQuote(`${makeBold('👑 Owner Menu')}\n\n` +
-`share (menit) - Broadcast otomatis setiap menit (reply)\n` +
+`share (menitp - Bc otomatis setiap menit (reply)\n` +
 `stopshare - Hentikan share\n` +
 `addprem - Tambah premium\n` +
 `delprem - Hapus premium\n` +
@@ -1092,8 +1065,7 @@ bot.on('callback_query', async (query) => {
 return;
 }
     
-    // ============ PREMIUM MENU ============
-    if (query.data === 'premium_menu') {
+    if (query.data === 'premium') {
         if (!isPremium(userId) && !isOwner(userId)) {
             return bot.sendMessage(chatId, `${makeQuote('❌ Hanya premium/owner!')}`, { parse_mode: 'HTML' });
         }
@@ -1125,7 +1097,6 @@ return;
         return;
     }
     
-    // ============ BACK TO MENU ============
     if (query.data === 'back_to_menu') {
         await showMainMenu(chatId, userId);
         return;
@@ -1151,7 +1122,7 @@ console.log('');
         for (const ownerId of db.owners) {
             try {
                 await bot.sendMessage(ownerId, 
-                    `${makeQuote(`${makeBold('🤖 Bot Ready!')}\n\n✅ Online\n👑 You are owner\n⭐ Premium: ${db.premium ? db.premium.length : 0} user\n📊 Groups: ${db.groups ? db.groups.length : 0}\n\n${makeBold('🆕 Fitur:')}\nSemua command tanpa prefix "/"\nContoh: bc, full, addrules, d1, d2, d3, d4, addpay, pay, resetduel, share, stopshare, addprem, delprem, listprem, listgb, ping, menu`)}`, 
+                    `${makeQuote(`${makeBold('🤖 Bot Ready!')}\n\n✅ Online\n👑 You are owner\n⭐ Premium: ${db.premium ? db.premium.length : 0} user\n📊 Groups: ${db.groups ? db.groups.length : 0}\n\n${makeBold('🆕 Fitur:')}\nSemua command tanpa prefix yaa\nContoh: bc, full, addrules\nDev: @drzxcx`)}`, 
                     { parse_mode: 'HTML' }
                 );
             } catch (e) {}
@@ -1160,6 +1131,3 @@ console.log('');
 })();
 
 console.log('✅ Bot siap digunakan!');
-console.log('📌 SEMUA COMMAND TANPA PREFIX "/"');
-console.log('📌 Contoh: "bc" bukan "/bc", "full" bukan "/full"');
-console.log('');
