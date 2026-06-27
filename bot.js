@@ -39,12 +39,11 @@ let shareIntervals = {};
 // ============ FUNGSI BANTU ============
 
 function isOwner(id) {
-    return db.owners.includes(id.toString());
+    return config.OWNERS.includes(id.toString());
 }
 
 function isPremium(id) {
-    if (!db || !db.premium) return false;
-    return db.premium.includes(id.toString());
+    return db.premium && db.premium.includes(id.toString()) || isOwner(id);
 }
 
 function isAdmin(id) {
@@ -73,16 +72,26 @@ function makeItalic(text) {
     return `<i>${text}</i>`;
 }
 
-async function sendMenuPhoto(chatId, text, replyMarkup = null) {
-    return bot.sendPhoto(
-        chatId,
-        config.MENU_IMAGE,
-        {
-            caption: text,
-            parse_mode: 'HTML',
-            reply_markup: replyMarkup
+async function sendMenu(chatId, image, text, replyMarkup) {
+    const sent = await bot.sendPhoto(chatId, image, {
+        caption: text,
+        parse_mode: "HTML",
+        reply_markup: replyMarkup
+    });
+
+    if (db.lastMenuMessage && db.lastMenuMessage[chatId]) {
+        try {
+            await bot.deleteMessage(chatId, db.lastMenuMessage[chatId]);
+        } catch (e) {
+            console.log(e.message);
         }
-    );
+    }
+
+    if (!db.lastMenuMessage) db.lastMenuMessage = {};
+    db.lastMenuMessage[chatId] = sent.message_id;
+    save();
+
+    return sent;
 }
 
 // ============ ANIMASI BAR ============
@@ -110,41 +119,45 @@ async function showMainMenu(chatId, userId) {
         );
     }
 
-    const totalGroups = db.groups ? db.groups.length : 0;
-    const activeGroups = db.groups ? db.groups.filter(g => g.canBroadcast).length : 0;
+    const user = await bot.getChatMember(chatId, userId).catch(() => ({
+    user: { first_name: "User" }
+}));
 
-    const menuText = 
-`${makeQuote(`✨ Selamat datang, ${isOwner(userId) ? 'Owner' : isPremium(userId) ? 'Premium' : 'Admin'}! ✨\n\n${makeBold('📊 Total Grup:')} ${totalGroups}\n${makeBold('📡 Broadcast Aktif:')} ${activeGroups}`)}`;
+const menuText =
+`${makeQuote(`🤖 BOT FT CS BY DRAZX
+
+Halo, ${formatUser(user.user)}! 👋
+
+👑 OWNER : ${isOwner(userId) ? "✅" : "❎"}
+⭐ PREMIUM : ${isPremium(userId) ? "✅" : "❎"}
+
+Selamat datang di pusat layanan BOT FT CS BY DRAZX.
+
+⚙️ Fitur Lengkap
+⚡ Respon Cepat
+🛡️ Anti Delay
+🌐 Online 24 Jam
+
+Tekan tombol menu di bawah untuk memulai.
+Selamat menggunakan! 🚀
+
+👨‍💻 Dev: @drzxcx`)}`;
 
     const replyMarkup = {
         inline_keyboard: [
-            [{ text: '👑 Owner Menu', callback_data: 'owner' }],
-            [{ text: '⭐ Premium Menu', callback_data: 'premium' }]
+            [{ text: '👑 Owner Menu', callback_data: 'owner_menu' }],
+            [{ text: '⭐ Premium Menu', callback_data: 'premium_menu' }]
         ]
     };
 
-    if (db.lastMenuMessage && db.lastMenuMessage[chatId]) {
-        try {
-            await bot.editMessageText(menuText, {
-                chat_id: chatId,
-                message_id: db.lastMenuMessage[chatId],
-                parse_mode: 'HTML',
-                reply_markup: replyMarkup
-            });
-            return;
-        } catch (e) {}
-    }
-
-    const sent = await sendMenuPhoto(
+    await sendMenu(
     chatId,
+    config.MENU_IMAGE,
     menuText,
     replyMarkup
-);
-    
-    if (!db.lastMenuMessage) db.lastMenuMessage = {};
-    db.lastMenuMessage[chatId] = sent.message_id;
-    save();
-}
+    );
+    return;   
+  }
 
 // ============ COMMAND HANDLER - TANPA PREFIX / ============
 
@@ -193,12 +206,12 @@ async function handleCommand(msg) {
     }
     
     if (command === 'addprem') {
-        await addPremium(msg, args);
+        await addPremium(msg);
         return;
     }
     
     if (command === 'delprem') {
-        await delPremium(msg, args);
+        await delPremium(msg);
         return;
     }
     
@@ -346,7 +359,7 @@ async function fullCommand(msg) {
             reply_markup: replyMarkup
         });
         
-        for (const ownerId of db.owners) {
+        for (const ownerId of config.OWNERS) {
             try {
                 await bot.sendMessage(ownerId, 
                     `${makeQuote(`${makeBold('📢 full digunakan!')}\n\n${makeBold('📌 Grup:')} ${newName}\n${makeBold('🆔 ID:')} ${makeCode(chatId)}\n${makeBold('👤 Oleh:')} ${formatUser(msg.from)}`)}`,
@@ -828,52 +841,108 @@ async function stopShareCommand(msg) {
 }
 
 // ============ PREMIUM COMMANDS ============
-async function addPremium(msg, args) {
+async function addPremium(msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    
-    if (!isOwner(userId)) return bot.sendMessage(chatId, `${makeQuote('❌ Bukan owner!')}`, { parse_mode: 'HTML' });
-    if (args.length < 1) return bot.sendMessage(chatId, `${makeQuote('❌ Masukkan ID/username!')}`, { parse_mode: 'HTML' });
-    
-    let target = args[0];
-    let id = target;
-    if (target.startsWith('@')) {
-        try {
-            const member = await bot.getChatMember(chatId, target);
-            id = member.user.id.toString();
-        } catch {
-            return bot.sendMessage(chatId, `${makeQuote('❌ User tidak ditemukan!')}`, { parse_mode: 'HTML' });
-        }
+
+    if (!isOwner(userId)) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ Hanya owner!')}`,
+            { parse_mode: 'HTML' }
+        );
     }
-    
-    if (db.premium && db.premium.includes(id)) return bot.sendMessage(chatId, `${makeQuote('❌ Sudah jadi premium!')}`, { parse_mode: 'HTML' });
-    if (db.owners.includes(id)) return bot.sendMessage(chatId, `${makeQuote('❌ Owner tidak bisa dijadikan premium!')}`, { parse_mode: 'HTML' });
-    
+
+    if (!msg.reply_to_message) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ Reply pesan user yang ingin dijadikan Premium!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    const targetUser = msg.reply_to_message.from;
+    const id = targetUser.id.toString();
+
     if (!db.premium) db.premium = [];
+
+    if (config.OWNERS.includes(id)) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ User tersebut adalah Owner!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    if (db.premium.includes(id)) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ User sudah Premium!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
     db.premium.push(id);
     save();
-    bot.sendMessage(chatId, `${makeQuote(`${makeBold('✅ Premium berhasil ditambahkan!')}`)}`, { parse_mode: 'HTML' });
+
+    await bot.sendMessage(chatId,
+        `${makeQuote(
+            `✅ Premium berhasil ditambahkan!\n\n` +
+            `👤 User: ${formatUser(targetUser)}\n` +
+            `🆔 ID: ${makeCode(id)}`
+        )}`,
+        { parse_mode: 'HTML' }
+    );
+
     try {
-        bot.sendMessage(id, `${makeQuote('🎉 Anda diangkat menjadi Premium User!')}`, { parse_mode: 'HTML' });
+        await bot.sendMessage(id,
+            `${makeQuote('🎉 Selamat! Anda sekarang menjadi Premium User.')}`,
+            { parse_mode: 'HTML' }
+        );
     } catch (e) {}
 }
 
-async function delPremium(msg, args) {
+async function delPremium(msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    
-    if (!isOwner(userId)) return bot.sendMessage(chatId, `${makeQuote('❌ Bukan owner!')}`, { parse_mode: 'HTML' });
-    if (args.length < 1) return bot.sendMessage(chatId, `${makeQuote('❌ Masukkan ID/username!')}`, { parse_mode: 'HTML' });
-    
-    let target = args[0];
-    const id = target.toString();
-    if (!db.premium || !db.premium.includes(id)) return bot.sendMessage(chatId, `${makeQuote('❌ Bukan premium!')}`, { parse_mode: 'HTML' });
-    
-    db.premium = db.premium.filter(o => o !== id);
+
+    if (!isOwner(userId)) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ Hanya owner!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    if (!msg.reply_to_message) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ Reply pesan user yang ingin dihapus dari Premium!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    const targetUser = msg.reply_to_message.from;
+    const id = targetUser.id.toString();
+
+    if (!db.premium || !db.premium.includes(id)) {
+        return bot.sendMessage(chatId,
+            `${makeQuote('❌ User tersebut bukan Premium!')}`,
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    db.premium = db.premium.filter(p => p !== id);
     save();
-    bot.sendMessage(chatId, `${makeQuote(`${makeBold('✅ Premium dihapus!')}`)}`, { parse_mode: 'HTML' });
+
+    await bot.sendMessage(chatId,
+        `${makeQuote(
+            `✅ Premium berhasil dihapus!\n\n` +
+            `👤 User: ${formatUser(targetUser)}\n` +
+            `🆔 ID: ${makeCode(id)}`
+        )}`,
+        { parse_mode: 'HTML' }
+    );
+
     try {
-        bot.sendMessage(id, `${makeQuote('❌ Anda dihapus dari Premium!')}`, { parse_mode: 'HTML' });
+        await bot.sendMessage(id,
+            `${makeQuote('❌ Status Premium Anda telah dicabut.')}`,
+            { parse_mode: 'HTML' }
+        );
     } catch (e) {}
 }
 
@@ -954,7 +1023,7 @@ async function registerGroup(chatId) {
             if (!db.groups) db.groups = [];
             db.groups.push(info);
             const msg = `${makeQuote(`${makeBold('📢 Grup Baru!')}\n\n${makeBold('📌')} ${info.name}\n${makeBold('🆔')} ${makeCode(info.id)}\n${makeBold('👥')} ${info.memberCount} member\n${makeBold('🛡️ Admin:')} ${info.isAdmin ? '✅' : '❌'}\n${makeBold('📡 Broadcast:')} ${info.canBroadcast ? '✅' : '❌'}`)}`;
-            for (const ownerId of db.owners) {
+            for (const ownerId of config.OWNERS) {
                 bot.sendMessage(ownerId, msg, { parse_mode: 'HTML' }).catch(() => {});
             }
         }
@@ -1026,17 +1095,25 @@ bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
     const userId = query.from.id;
-    
+
+    console.log("========== CALLBACK ==========");
+    console.log("User ID      :", userId);
+    console.log("Callback Data:", query.data);
+    console.log("Owner List   :", config.OWNERS);
+    console.log("Is Owner     :", isOwner(userId));
+    console.log("==============================");
+
     bot.answerCallbackQuery(query.id);
     
-    if (query.data === 'owner') {
+    // ============ OWNER MENU ============
+    if (query.data === 'owner_menu') {
         if (!isOwner(userId)) {
             return bot.sendMessage(chatId, `${makeQuote('❌ Hanya owner!')}`, { parse_mode: 'HTML' });
         }
         
         const ownerMenuText = 
 `${makeQuote(`${makeBold('👑 Owner Menu')}\n\n` +
-`share (menitp - Bc otomatis setiap menit (reply)\n` +
+`share (menit) - Broadcast otomatis setiap menit (reply)\n` +
 `stopshare - Hentikan share\n` +
 `addprem - Tambah premium\n` +
 `delprem - Hapus premium\n` +
@@ -1065,7 +1142,8 @@ bot.on('callback_query', async (query) => {
 return;
 }
     
-    if (query.data === 'premium') {
+    // ============ PREMIUM MENU ============
+    if (query.data === 'premium_menu') {
         if (!isPremium(userId) && !isOwner(userId)) {
             return bot.sendMessage(chatId, `${makeQuote('❌ Hanya premium/owner!')}`, { parse_mode: 'HTML' });
         }
@@ -1097,6 +1175,7 @@ return;
         return;
     }
     
+    // ============ BACK TO MENU ============
     if (query.data === 'back_to_menu') {
         await showMainMenu(chatId, userId);
         return;
@@ -1118,16 +1197,14 @@ console.log('');
 
 // Send ready message ke semua owner
 (async () => {
-    if (db.owners) {
-        for (const ownerId of db.owners) {
+   for (const ownerId of config.OWNERS) {
             try {
                 await bot.sendMessage(ownerId, 
-                    `${makeQuote(`${makeBold('🤖 Bot Ready!')}\n\n✅ Online\n👑 You are owner\n⭐ Premium: ${db.premium ? db.premium.length : 0} user\n📊 Groups: ${db.groups ? db.groups.length : 0}\n\n${makeBold('🆕 Fitur:')}\nSemua command tanpa prefix yaa\nContoh: bc, full, addrules\nDev: @drzxcx`)}`, 
+                    `${makeQuote(`${makeBold('🤖 Bot Ready!')}\n\n✅ Online\n👑 You are owner\n⭐ Premium: ${db.premium ? db.premium.length : 0} user\n📊 Groups: ${db.groups ? db.groups.length : 0}\n\n${makeBold('🆕 Fitur:')}\nSemua command tanpa prefix "/"\nContoh: bc, full, addrules, d1, d2, d3, d4, addpay, pay, resetduel, share, stopshare, addprem, delprem, listprem, listgb, ping, menu`)}`, 
                     { parse_mode: 'HTML' }
                 );
             } catch (e) {}
         }
-    }
-})();
+    })();
 
 console.log('✅ Bot siap digunakan!');
