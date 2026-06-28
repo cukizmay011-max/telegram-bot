@@ -2,7 +2,7 @@ module.exports = {
     TOKEN: process.env.TELEGRAM_TOKEN || "8894371867:AAGsyjEfc0QfkbNfHhv_jKtQibYBb2kTemc", // GANTI DENGAN TOKEN BOT ANDA
     MAIN_OWNER: "drazxreal", // GANTI DENGAN USERNAME OWNER (tanpa @)
     OWNERS: [
-        "8678912390"
+        "8622543593"
     ],
     
     MIN_MEMBER: 10,
