@@ -422,26 +422,36 @@ async function addRules(msg) {
 async function showPayment(msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-    
+
     if (!isAdmin(userId) && !isPremium(userId)) {
-        return bot.sendMessage(chatId, `${makeQuote('❌ Anda tidak memiliki akses!')}`, { parse_mode: 'HTML' });
+        return bot.sendMessage(
+            chatId,
+            makeQuote('❌ Anda tidak memiliki akses!'),
+            { parse_mode: 'HTML' }
+        );
     }
-    
-    const ownerName = payment.username
-    ? `@${payment.username}`
-    : "-";
-    
+
     const payment = db.payments[userId.toString()];
-    if (!payment) return bot.sendMessage(chatId, `${makeQuote('❌ Belum punya QRIS. Gunakan addpay')}`, { parse_mode: 'HTML' });
-    
-    const qrisCaption =
-`${makeQuote(
-`${makeBold(`QRIS PAYMENT BY ${ownerName} 🔰`)}\n\n` +
-`${makeBold('TRX WAJIB SERTAKAN BUKTI‼️')}\n` +
-`${makeBold('BUKPAL? LU GW TANDAIN‼️')}`
-)}`;
-    
-    bot.sendPhoto(chatId, payment.fileId, {
+
+    if (!payment) {
+        return bot.sendMessage(
+            chatId,
+            makeQuote('❌ Belum punya QRIS. Gunakan addpay'),
+            { parse_mode: 'HTML' }
+        );
+    }
+
+    const ownerName = payment.username
+        ? `@${payment.username}`
+        : "-";
+
+    const qrisCaption = makeQuote(
+        `${makeBold(`QRIS PAYMENT BY ${ownerName} 🔰`)}\n\n` +
+        `${makeBold('TRX WAJIB SERTAKAN BUKTI‼️')}\n` +
+        `${makeBold('BUKPAL? LU GW TANDAIN‼️')}`
+    );
+
+    return bot.sendPhoto(chatId, payment.fileId, {
         caption: qrisCaption,
         parse_mode: 'HTML'
     });
