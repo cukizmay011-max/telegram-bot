@@ -47,8 +47,10 @@ function isPremium(id) {
 }
 
 function isAdmin(id) {
-    if (!db || !db.admins) return false;
-    return db.admins.includes(id.toString()) || isOwner(id) || isPremium(id);
+    if (!db.admins) db.admins = [];
+    return db.admins.includes(id.toString()) ||
+           isOwner(id) ||
+           isPremium(id);
 }
 
 function formatUser(user) {
