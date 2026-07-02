@@ -172,7 +172,7 @@ async function handleCommand(msg) {
     const command = parts[0].toLowerCase();
     const args = parts.slice(1);
     
-    if (command === 'start' && msg.chat.type === 'private') {
+    if (command === '/start' && msg.chat.type === 'private') {
         await showMainMenu(chatId, userId);
         return;
     }
