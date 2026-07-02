@@ -17,7 +17,7 @@ const bot = new TelegramBot(config.TOKEN, {
 });
 
 // ============ CONSOLE BANNER ============
-console.log('🤖 DEV:@drazxreal');
+console.log('🤖 DEV:@drzxcxc');
 console.log('🤖 BOT:@OFFC_FTDRAZX_BOT');
 console.log('📌 VERSION: 1.0');
 console.log('⭐ MODE: VVIP');
@@ -47,8 +47,10 @@ function isPremium(id) {
 }
 
 function isAdmin(id) {
-    if (!db || !db.admins) return false;
-    return db.admins.includes(id.toString()) || isOwner(id) || isPremium(id);
+    if (!db.admins) db.admins = [];
+    return db.admins.includes(id.toString()) ||
+           isOwner(id) ||
+           isPremium(id);
 }
 
 function formatUser(user) {
@@ -141,7 +143,7 @@ Selamat datang di pusat layanan BOT FT CS BY DRAZX.
 Tekan tombol menu di bawah untuk memulai.
 Selamat menggunakan! 🚀
 
-👨‍💻 Dev: @drazxreal`)}`;
+👨‍💻 Dev: @drzxcx`)}`;
 
     const replyMarkup = {
         inline_keyboard: [
@@ -422,36 +424,22 @@ async function addRules(msg) {
 async function showPayment(msg) {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
-
+    
     if (!isAdmin(userId) && !isPremium(userId)) {
-        return bot.sendMessage(
-            chatId,
-            makeQuote('❌ Anda tidak memiliki akses!'),
-            { parse_mode: 'HTML' }
-        );
+        return bot.sendMessage(chatId, `${makeQuote('❌ Anda tidak memiliki akses!')}`, { parse_mode: 'HTML' });
     }
-
+    
     const payment = db.payments[userId.toString()];
-
-    if (!payment) {
-        return bot.sendMessage(
-            chatId,
-            makeQuote('❌ Belum punya QRIS. Gunakan addpay'),
-            { parse_mode: 'HTML' }
-        );
-    }
-
-    const ownerName = payment.username
-        ? `@${payment.username}`
-        : "-";
-
-    const qrisCaption = makeQuote(
-        `${makeBold(`QRIS PAYMENT BY ${ownerName} 🔰`)}\n\n` +
-        `${makeBold('TRX WAJIB SERTAKAN BUKTI‼️')}\n` +
-        `${makeBold('BUKPAL? LU GW TANDAIN‼️')}`
-    );
-
-    return bot.sendPhoto(chatId, payment.fileId, {
+    if (!payment) return bot.sendMessage(chatId, `${makeQuote('❌ Belum punya QRIS. Gunakan addpay')}`, { parse_mode: 'HTML' });
+    
+    const qrisCaption = 
+`${makeQuote(
+`${makeBold('QRIS PAYMENT BY @' + config.MAIN_OWNER + ' 🔰')}\n\n` +
+`${makeBold('TRX WAJIB SERTAKAN BUKTI‼️')}\n` +
+`${makeBold('BUKPAL? LU GW TANDAIN‼️')}`
+)}`;
+    
+    bot.sendPhoto(chatId, payment.fileId, {
         caption: qrisCaption,
         parse_mode: 'HTML'
     });
@@ -472,12 +460,9 @@ async function addPayment(msg) {
     
     const photo = msg.reply_to_message.photo[msg.reply_to_message.photo.length - 1];
     db.payments[userId.toString()] = {
-    fileId: photo.file_id,
-    username: msg.from.username,
-    firstName: msg.from.first_name,
-    userId: userId.toString(),
-    timestamp: new Date().toISOString()
-};
+        fileId: photo.file_id,
+        timestamp: new Date().toISOString()
+    };
     save();
     bot.sendMessage(chatId, `${makeQuote(`${makeBold('✅ QRIS berhasil disimpan!')}`)}`, { parse_mode: 'HTML' });
 }
